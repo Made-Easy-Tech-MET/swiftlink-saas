@@ -23,12 +23,30 @@ const parseApiResponse = async (response) => {
   )
 }
 
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    })
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error(`API request timed out after ${Math.round(timeoutMs / 1000)}s`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 const authedRequest = async (path, options = {}) => {
   const { data: sessionData } = await supabase.auth.getSession()
   const token = sessionData?.session?.access_token
   if (!token) throw new Error('No authenticated session found')
 
-  const response = await fetch(`${apiBase}${path}`, {
+  const response = await fetchWithTimeout(`${apiBase}${path}`, {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -46,7 +64,7 @@ const authedRequest = async (path, options = {}) => {
 }
 
 const publicRequest = async (path, options = {}) => {
-  const response = await fetch(`${apiBase}${path}`, {
+  const response = await fetchWithTimeout(`${apiBase}${path}`, {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',

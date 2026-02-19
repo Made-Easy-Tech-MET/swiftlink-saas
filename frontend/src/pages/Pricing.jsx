@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Check, Sparkles } from 'lucide-react'
+import { Check, Sparkles, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { billingOperations } from '../services/supabase'
 
@@ -56,40 +56,29 @@ export default function Pricing() {
 
       setSyncingCheckout(true)
       setError('')
-      setInfo('Paiement confirme. Mise a jour de votre abonnement...')
+      setInfo('Paiement confirme. Redirection vers votre dashboard...')
 
       try {
-        await billingOperations.confirmCheckoutSession(checkoutSessionId)
-      } catch (confirmError) {
-        // Webhook may still handle this; keep going with retries on /subscriptions/me.
+        // Best effort sync: never block UX waiting for webhook propagation.
+        await Promise.race([
+          (async () => {
+            try {
+              await billingOperations.confirmCheckoutSession(checkoutSessionId)
+            } catch (confirmError) {
+              // Webhook may still complete the update.
+            }
+            try {
+              await refreshSubscription()
+            } catch (refreshError) {
+              // Ignore and continue redirecting.
+            }
+          })(),
+          new Promise((resolve) => setTimeout(resolve, 2500))
+        ])
+      } finally {
+        if (!isActive) return
+        navigate(getDashboardRoute(), { replace: true })
       }
-
-      const maxAttempts = 12
-      const waitMs = 1000
-
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const result = await refreshSubscription()
-        const currentPlan = result?.data?.plan
-        const currentStatus = result?.data?.status
-
-        if (
-          result?.success &&
-          currentStatus === 'active' &&
-          (currentPlan === checkoutPlan || ['pro', 'ultimate'].includes(currentPlan))
-        ) {
-          if (!isActive) return
-          setInfo('Paiement reussi. Redirection vers votre dashboard...')
-          setTimeout(() => {
-            navigate(getDashboardRoute(), { replace: true })
-          }, 800)
-          return
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, waitMs))
-      }
-
-      if (!isActive) return
-      setError("Paiement enregistre, mais la mise a jour du plan prend plus de temps. Recharge la page dans quelques secondes.")
     }
 
     syncCheckout().finally(() => {
@@ -130,6 +119,13 @@ export default function Pricing() {
   return (
     <div className="min-h-screen bg-light-bg dark:bg-dark-bg py-16 px-4">
       <div className="max-w-6xl mx-auto">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-primary"
+        >
+          <ArrowLeft size={16} />
+          Back
+        </button>
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Choose Your Plan</h1>
           <p className="text-gray-500 mt-3">Restaurants and drivers can upgrade anytime.</p>

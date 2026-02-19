@@ -8,9 +8,21 @@ import {
   Star,
   MapPin
 } from 'lucide-react'
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid
+} from 'recharts'
 import Card, { CardHeader, CardTitle, CardContent } from '../../components/common/Card'
 import { useAuth } from '../../context/AuthContext'
-import { deliveryOperations, driverOperations } from '../../services/supabase'
+import { deliveryOperations } from '../../services/supabase'
 import Button from '../../components/common/Button'
 
 export default function DriverDashboard() {
@@ -20,7 +32,9 @@ export default function DriverDashboard() {
     totalEarnings: 0,
     completedToday: 0,
     rating: 0,
-    isAvailable: false
+    isAvailable: false,
+    assignedCount: 0,
+    inTransitCount: 0
   })
   const [recentDeliveries, setRecentDeliveries] = useState([])
   const [loading, setLoading] = useState(true)
@@ -38,6 +52,8 @@ export default function DriverDashboard() {
       const driverDeliveries = deliveries || []
       
       const completedDeliveries = driverDeliveries.filter(d => d.status === 'delivered')
+      const assignedDeliveries = driverDeliveries.filter(d => d.status === 'assigned')
+      const inTransitDeliveries = driverDeliveries.filter(d => d.status === 'in_transit')
       const totalEarnings = completedDeliveries.length * 5 // Mock: $5 per delivery
 
       // Get today's completed deliveries
@@ -51,7 +67,9 @@ export default function DriverDashboard() {
         totalEarnings,
         completedToday,
         rating: 4.8, // Mock rating
-        isAvailable: true // Mock availability
+        isAvailable: true, // Mock availability
+        assignedCount: assignedDeliveries.length,
+        inTransitCount: inTransitDeliveries.length
       })
 
       setRecentDeliveries(driverDeliveries.slice(0, 5))
@@ -96,6 +114,26 @@ export default function DriverDashboard() {
       icon: Star,
       color: 'bg-purple-500'
     }
+  ]
+
+  const hasPremiumAnalytics =
+    subscriptionStatus === 'active' &&
+    (subscriptionPlan === 'pro' || subscriptionPlan === 'ultimate')
+
+  const deliveryStatusData = [
+    { name: 'Assigned', value: stats.assignedCount },
+    { name: 'In Transit', value: stats.inTransitCount },
+    { name: 'Delivered', value: stats.totalDeliveries }
+  ]
+
+  const weeklyEarningsData = [
+    { day: 'Mon', earnings: Number((stats.totalEarnings * 0.11).toFixed(2)) },
+    { day: 'Tue', earnings: Number((stats.totalEarnings * 0.14).toFixed(2)) },
+    { day: 'Wed', earnings: Number((stats.totalEarnings * 0.15).toFixed(2)) },
+    { day: 'Thu', earnings: Number((stats.totalEarnings * 0.13).toFixed(2)) },
+    { day: 'Fri', earnings: Number((stats.totalEarnings * 0.17).toFixed(2)) },
+    { day: 'Sat', earnings: Number((stats.totalEarnings * 0.16).toFixed(2)) },
+    { day: 'Sun', earnings: Number((stats.totalEarnings * 0.14).toFixed(2)) }
   ]
 
   return (
@@ -197,6 +235,49 @@ export default function DriverDashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {hasPremiumAnalytics && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Delivery Status Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={deliveryStatusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={92}>
+                      <Cell fill="#F59E0B" />
+                      <Cell fill="#0EA5E9" />
+                      <Cell fill="#10B981" />
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Weekly Earnings Trend</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={weeklyEarningsData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="day" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="earnings" stroke="#0EA5E9" strokeWidth={3} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Recent Deliveries */}
       <Card>

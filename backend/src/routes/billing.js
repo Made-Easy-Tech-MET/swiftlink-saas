@@ -39,6 +39,8 @@ const addDays = (dateString, days) => {
   return value.toISOString().slice(0, 10)
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 const upsertSubscriptionFromCheckout = async (checkoutSession) => {
   const metadata = checkoutSession.metadata || {}
   const userId = metadata.user_id
@@ -51,7 +53,11 @@ const upsertSubscriptionFromCheckout = async (checkoutSession) => {
 
   let stripeSubscription = null
   if (checkoutSession.subscription) {
-    stripeSubscription = await stripe.subscriptions.retrieve(checkoutSession.subscription)
+    if (typeof checkoutSession.subscription === 'string') {
+      stripeSubscription = await stripe.subscriptions.retrieve(checkoutSession.subscription)
+    } else if (typeof checkoutSession.subscription === 'object') {
+      stripeSubscription = checkoutSession.subscription
+    }
   }
 
   const startDate = stripeSubscription
@@ -150,9 +156,27 @@ router.get('/confirm', async (req, res) => {
       return res.status(400).json({ error: 'Missing session_id' })
     }
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ['subscription']
-    })
+    let session = null
+    const attempts = 6
+    for (let i = 0; i < attempts; i++) {
+      session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ['subscription']
+      })
+
+      const sessionComplete = session?.status === 'complete'
+      const paidStatus = ['paid', 'no_payment_required'].includes(session?.payment_status)
+      const subStatus =
+        typeof session?.subscription === 'object' ? session.subscription?.status : null
+      const activeSub = ['active', 'trialing'].includes(subStatus)
+
+      if (sessionComplete && (paidStatus || activeSub)) {
+        break
+      }
+
+      if (i < attempts - 1) {
+        await sleep(800)
+      }
+    }
 
     if (!session || session.mode !== 'subscription') {
       return res.status(400).json({ error: 'Invalid checkout session' })
@@ -163,8 +187,16 @@ router.get('/confirm', async (req, res) => {
       return res.status(403).json({ error: 'Session does not belong to this user' })
     }
 
-    if (session.payment_status !== 'paid') {
-      return res.status(400).json({ error: `Payment not completed (status: ${session.payment_status})` })
+    const sessionComplete = session.status === 'complete'
+    const paidStatus = ['paid', 'no_payment_required'].includes(session.payment_status)
+    const subStatus =
+      typeof session.subscription === 'object' ? session.subscription?.status : null
+    const activeSub = ['active', 'trialing'].includes(subStatus)
+
+    if (!sessionComplete || (!paidStatus && !activeSub)) {
+      return res.status(400).json({
+        error: `Payment not finalized (session_status: ${session.status}, payment_status: ${session.payment_status})`
+      })
     }
 
     await upsertSubscriptionFromCheckout(session)
