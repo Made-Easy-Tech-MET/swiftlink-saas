@@ -136,3 +136,6 @@ PORT=3000
 ## 📄 License
 
 MIT License
+
+# swiftlink-saas
+SwiftLink - SaaS logistics and restaurant management platform built with React, Node.js and Supabase.
