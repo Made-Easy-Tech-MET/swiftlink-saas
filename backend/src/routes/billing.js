@@ -233,6 +233,18 @@ router.post('/portal', async (req, res) => {
   }
 })
 
+router.get('/debug/frontend-url', async (req, res) => {
+  try {
+    res.json({
+      frontend_url: frontendUrl,
+      env_frontend_url: process.env.FRONTEND_URL || null,
+      node_env: process.env.NODE_ENV || null
+    })
+  } catch (error) {
+    res.status(400).json({ error: error.message })
+  }
+})
+
 export const stripeWebhookHandler = async (req, res) => {
   try {
     ensureStripeConfigured()
